@@ -12,11 +12,12 @@
 const int ARG_SIZE  = 64; //the size of args array for exec
 const int ARGS_SIZE = 1024; //the size of each argument
 
+//struct to store all the commands
 typedef struct Command {
-	int index;
-	char* shortForm;
-	char* fullForm;
-	struct Command* next;
+	int index; //index of the command
+	char* shortForm; //for history brief
+	char* fullForm; //for history full
+	struct Command* next; //next Command
 } Command;
 char** input(char*);
 int execute(char**);
@@ -62,6 +63,7 @@ int main(int argc, char* argv[]) {
 	return 0;
 }
 
+//main loop to read inputs and execute. The shell loop
 int gameLoop(Command** comm) {
 	char** args;
 	
@@ -75,28 +77,40 @@ int gameLoop(Command** comm) {
 			fprintf (stderr, "Pipe failed.\n");
 			return EXIT_FAILURE;
 		}
+		//fork for reading input
+		int a = -1;
 		int rc = fork();
 		if (rc < 0) {
 			fprintf (stderr, "Fork failed.\n");
 			return EXIT_FAILURE;
 		} else if (rc == 0) {
-			char line[ARGS_SIZE];
-			if (inputFromCmd(line)) {
-				exit(0);
+				char line[ARGS_SIZE];
+				char* buffer;
+			buffer = readline("Enter your command>");
+			if (strlen(buffer) != 0) {
+				if (buffer[0] == ' ') {
+					printf("Don't type spaces before your Command\n");
+					continue;
+				}
+				add_history(buffer);
+				strcpy(line, buffer);
+				a = 0;
+			} else {
+				continue;
 			}
 			toLowerCase(line);
-			close(fd[0]);
-			write(fd[1], line, sizeof(line));
+			close(fd[0]); //closing read side
+			write(fd[1], line, sizeof(line)); //writing into write side
 			exit(0);
 		} else {
+			// parent process to execute the inputs
 			wait(NULL);
 			char line[ARGS_SIZE];
-			close(fd[1]);
-			read(fd[0], line, sizeof(line));
+			close(fd[1]); //closing write side
+			read(fd[0], line, sizeof(line)); //writing into read side
 			args = input(line);
 			toLowerCase(args[0]);
-		
-		
+			
 			if (strcmp(line, "history brief") == 0) {
 				if (commands == NULL) {
 					printf("No predefined commands found\n");
@@ -115,11 +129,36 @@ int gameLoop(Command** comm) {
 					historyFull(commands);
 				}
 			}
-			else if (strcmp(line, "insert") == 0) {
-				char res[ARGS_SIZE];
-				printf("Enter the command you want to execute and insert: ");
-				scanf("%[^\n]%*c", res);
-				insertIntoList(&commands, res);
+			else if (strcmp(args[0], "insert") == 0) {
+				
+				if (args[1] == NULL) {
+					printf("Command Not Found.\n");
+					printf("Type Command after 'insert' to insert\n");
+					continue;
+				}
+				printf("Will not check if command can execute.\n");
+				printf("Exec might fail for an invalid command.\n");
+
+				char* res;
+				res = removeFirstWord(line);
+				
+				char** temp = input(res);
+				
+				if (strcmp(temp[0], "ping") == 0) {
+					if (temp[1] != NULL) {
+						if (strcmp(temp[1], "-c") != 0) {
+							insertSubstring(res, "-c 5 ", 6);
+						}
+					}
+				}
+				if (findCommand(commands, res) == NULL) { //insert if not found
+					printf("Inserting.. %s\n", res);
+					insertIntoList(&commands, res);
+				} else { //else print command not found
+					printf("Command already present\n");
+					printf("To Execute commands use 'exec <COMMAND_NAME>' or 'exec <COMMAND_NUM>'.\n");
+					printf("To look at all the commands use 'history brief' or 'history full'.\n");
+				}
 			}
 			else if (strcmp(args[0], "exec") == 0){
 				char* res;
@@ -135,7 +174,7 @@ int gameLoop(Command** comm) {
 					}
 				}
 				int x = atoi(res);
-				if (x != 0) {
+				if (x != 0) { //to execute if numbers are given
 					if (findCommandByNum(commands, x) != NULL) {
 						printf("Executing Command %d\n", x);
 						res = findCommandByNum(commands, x);
@@ -148,12 +187,12 @@ int gameLoop(Command** comm) {
 						printf("To look at all the commands use 'history brief' or 'history full'.\n");
 					}
 				}
-				else if (findCommand(commands, res) != NULL) {
+				else if (findCommand(commands, res) != NULL) { //to execute for given commands
 					printf("Executing.. %s\n", res);
 					res = findCommand(commands, res);
 					args = input(res);
 					execute(args);
-				} else {
+				} else { // if command not found
 					printf("Command not found\n");
 					printf("To Insert commands use 'insert'.\n");
 					printf("To look at all the commands use 'history brief' or 'history full'.\n");
@@ -166,12 +205,14 @@ int gameLoop(Command** comm) {
 			else {
 				printf("Command not found\n");
 				printf("Use 'exec' before commands to execute\n");
+				printf("Use 'insert' before commands to insert\n");
 			}
 		}
 	}
 	return 0;
 }
 
+//function to tokenize the given string
 char** input(char* line) {
 	char** args = (char**)malloc(sizeof(char*) * ARG_SIZE);
 	char* seperator = " ";
@@ -196,6 +237,7 @@ char** input(char* line) {
 	return args;
 }
 
+//function to execute the given tokenized string
 int execute(char** args) {
 	if (args == NULL) {
 		printf("Invalid Command\n");
@@ -221,17 +263,7 @@ int execute(char** args) {
 	return 0;
 }
 
-/* char** execInput(char** args) {
-	// if (args == NULL) return NULL;
-	// int i = 1;
-	// char** argv = (char**) malloc(sizeof(char*) * 64);
-	// while (args[i] != NULL) {
-		// argv[i-1] = args[i];
-	// }
-	// argv[i-1] = NULL;
-	// return argv;
-// }*/
-
+//function to convert characters into lower case
 void toLowerCase(char* line) {
 	for (int i = 0; i < strlen(line); i++) {
 		if (line[i] >= 65 && line[i] <= 90) {
@@ -240,6 +272,8 @@ void toLowerCase(char* line) {
 	}
 }
 
+// start
+//functions to add a string in the middle, used for ping command to only execute 5 times
 char *substring(char *string, int position, int length) {
    char *pointer;
    int c;
@@ -273,7 +307,9 @@ void insertSubstring(char *a, char *b, int position) {
    strcat(a, e);
    free(e);
 }
+// end
 
+//to print history brief
 void historyBrief(Command* commands) {
 	if (commands == NULL) return;
 	Command* last;
@@ -286,6 +322,7 @@ void historyBrief(Command* commands) {
 	return;
 }
 
+//to print history full
 void historyFull(Command* commands) {
 	if (commands == NULL) return;
 	Command* last;
@@ -298,6 +335,7 @@ void historyFull(Command* commands) {
 	return;
 }
 
+//to find if the given command(String) is present in the linked list command
 char* findCommand(Command* commands, char* line) {
 	if (commands == NULL) return NULL;
 	Command* last;
@@ -314,6 +352,7 @@ char* findCommand(Command* commands, char* line) {
 	return (last != NULL) ? last->fullForm : NULL;
 }
 
+//to find if the given command(Int) is present in the linked list command
 char* findCommandByNum(Command* commands, int x) {
 	if (commands == NULL) return NULL;
 	Command* last;
@@ -330,6 +369,7 @@ char* findCommandByNum(Command* commands, int x) {
 	return (last != NULL) ? last->fullForm : NULL;
 }
 
+//getting the first word of the string
 char* getFirstString(char* line) {
 	char* seperator = " ";
 	char* buffer;
@@ -343,6 +383,7 @@ char* getFirstString(char* line) {
 	return buffer;
 }
 
+//removing the first word of the given string
 char* removeFirstWord(char* line) {
 	char* res = (char*)malloc(sizeof(char) * strlen(line));
 	int i = 0, index;
@@ -362,9 +403,10 @@ char* removeFirstWord(char* line) {
 	return res;
 }
 
+//function to read from the command line
 int inputFromCmd(char* line) {
 	char* buffer;
-	buffer = readline("Shell> ");
+	buffer = readline("Enter your command>");
 	if (strlen(buffer) != 0) {
 		if (buffer[0] == ' ') {
 			printf("Don't type spaces before your Command\n");
@@ -379,6 +421,8 @@ int inputFromCmd(char* line) {
 	}
 }
 
+//start
+//functions to execute the commands in a file by first storing the commands in a char* array
 void execStored(char** cd) {
 	for (int i = 0; i < sizeof(cd); i++) {
 		char* args[ARG_SIZE];
@@ -440,7 +484,9 @@ char** execFile(FILE* file) {
 	execStored(temp);
 	return res;
 }
+//end
 
+//function to insert the command(String) to the linked list
 void insertIntoList(Command** commands, char* line) {
 	if (findCommand(*commands, line) != NULL) {
 		printf("Command Already Defined.\n");
@@ -473,6 +519,7 @@ void insertIntoList(Command** commands, char* line) {
 	return;
 }
 
+//function to insert all command from a given char* array
 void insert(Command** commands, char** temp) {
 	int i = 0;
 	while (temp[i] != NULL) {
@@ -482,6 +529,7 @@ void insert(Command** commands, char** temp) {
 	}
 }
 
+//function to call execFile() for all files
 void execAllFiles(int argc, char* argv[], Command** commands) {
 	char* fileName;
 	for (int i = 1; i < argc; i++) {
@@ -512,6 +560,7 @@ void execAllFiles(int argc, char* argv[], Command** commands) {
 	return;
 }
 
+//initialization printf statements for the shell
 void shellInit() {
 	printf("Files added, if files were not able to open, please check your files and file format.\n");
 	printf("Use 'insert' to insert extra commands into history.\n");

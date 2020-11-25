@@ -1,3 +1,2 @@
 ls -al
 whoami
-ping www.google.com

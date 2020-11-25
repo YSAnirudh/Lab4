@@ -2,7 +2,9 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
-
+#include <readline/readline.h>
+#include <readline/history.h>
+#include <sys/wait.h>
 /* Read characters from the pipe and echo them to stdout. */
 void read_from_pipe (int file) {
 /* the variable file is of integer type and
@@ -33,23 +35,40 @@ into*/
 	fclose (stream);
 }
 
+int inputFromCmd(char* line) {
+	char* buffer;
+	buffer = readline("Shell> ");
+	if (strlen(buffer) != 0) {
+		if (buffer[0] == ' ') {
+			printf("Don't type spaces before your Command\n");
+			return 1;
+		}
+		add_history(buffer);
+		strcpy(line, buffer);
+		return 0;
+	} else {
+		
+		return 1;
+	}
+}
+
 int main () {
 	pid_t pid;
-	int mypipe[2];
+	int fd[2];
 
-	if (pipe (mypipe)) {
+	if (pipe (fd)) {
 		fprintf (stderr, "Pipe failed.\n");
 		return EXIT_FAILURE;
 	}
 	pid = fork ();
 	if (pid == (pid_t) 0) {
-		char* arr;
-
-		close (mypipe[1]);
-		int N = read(0,arr, sizeof(arr)); 
-		for (int i = 0; i < N;i++) {
-			printf("%s\n", arr);
+		char line[1000];
+		if (inputFromCmd(line)) {
+			exit(0);
 		}
+		close (fd[0]);
+		write(fd[1], line, sizeof(line));
+		
 		return EXIT_SUCCESS;
 	}
 	else if (pid < (pid_t) 0) {
@@ -57,9 +76,11 @@ int main () {
 		return EXIT_FAILURE;
 	}
 	else {
-		int arr[] = {10, 32,12};
-		close (mypipe[0]);
-		write(1, arr, sizeof(arr));
+		wait(NULL);
+		char line[1000];
+		close (fd[1]);
+		read(fd[0],line, sizeof(line));
+		printf("%s\n", line);
 		
 		return EXIT_SUCCESS;
 	}

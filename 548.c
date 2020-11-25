@@ -36,7 +36,7 @@ void insertIntoList(Command**, char*);
 void insert(Command**, char**);
 void execAllFiles(int, char**, Command**);
 void shellInit();
-void gameLoop(Command**);
+int gameLoop(Command**);
 
 int main(int argc, char* argv[]) {
 	if (argc <= 0) {
@@ -62,92 +62,114 @@ int main(int argc, char* argv[]) {
 	return 0;
 }
 
-void gameLoop(Command** comm) {
+int gameLoop(Command** comm) {
 	char** args;
-	char line[ARGS_SIZE];
+	
 	Command* commands;
 	commands = *comm;
 	while(1) {
 		args = NULL;
-		if (inputFromCmd(line)) {
-			continue;
-		}
-		toLowerCase(line);
-		args = input(line);
-		toLowerCase(args[0]);
 		
-		if (strcmp(line, "history brief") == 0) {
-			if (commands == NULL) {
-				printf("No predefined commands found\n");
-				printf("To Insert commands use 'insert'.\n");
-				continue;
-			} else {
-				historyBrief(commands);
+		int fd[2];
+		if (pipe (fd)) {
+			fprintf (stderr, "Pipe failed.\n");
+			return EXIT_FAILURE;
+		}
+		int rc = fork();
+		if (rc < 0) {
+			fprintf (stderr, "Fork failed.\n");
+			return EXIT_FAILURE;
+		} else if (rc == 0) {
+			char line[ARGS_SIZE];
+			if (inputFromCmd(line)) {
+				exit(0);
 			}
-		}
-		else if (strcmp(line, "history full") == 0) {
-			if (commands == NULL) {
-				printf("No predefined commands found\n");
-				printf("To Insert commands use 'insert'.\n");
-				continue;
-			} else {
-				historyFull(commands);
+			toLowerCase(line);
+			close(fd[0]);
+			write(fd[1], line, sizeof(line));
+			exit(0);
+		} else {
+			wait(NULL);
+			char line[ARGS_SIZE];
+			close(fd[1]);
+			read(fd[0], line, sizeof(line));
+			args = input(line);
+			toLowerCase(args[0]);
+		
+		
+			if (strcmp(line, "history brief") == 0) {
+				if (commands == NULL) {
+					printf("No predefined commands found\n");
+					printf("To Insert commands use 'insert'.\n");
+					continue;
+				} else {
+					historyBrief(commands);
+				}
 			}
-		}
-		else if (strcmp(line, "insert") == 0) {
-			char res[ARGS_SIZE];
-			printf("Enter the command you want to execute and insert: ");
-			scanf("%[^\n]%*c", res);
-			insertIntoList(&commands, res);
-		}
-		else if (strcmp(args[0], "exec") == 0){
-			char* res;
-			res = removeFirstWord(line);
-			
-			char** temp = input(res);
-			
-			if (strcmp(temp[0], "ping") == 0) {
-				if (temp[1] != NULL) {
-					if (strcmp(temp[1], "-c") != 0) {
-						insertSubstring(res, "-c 5 ", 6);
+			else if (strcmp(line, "history full") == 0) {
+				if (commands == NULL) {
+					printf("No predefined commands found\n");
+					printf("To Insert commands use 'insert'.\n");
+					continue;
+				} else {
+					historyFull(commands);
+				}
+			}
+			else if (strcmp(line, "insert") == 0) {
+				char res[ARGS_SIZE];
+				printf("Enter the command you want to execute and insert: ");
+				scanf("%[^\n]%*c", res);
+				insertIntoList(&commands, res);
+			}
+			else if (strcmp(args[0], "exec") == 0){
+				char* res;
+				res = removeFirstWord(line);
+				
+				char** temp = input(res);
+				
+				if (strcmp(temp[0], "ping") == 0) {
+					if (temp[1] != NULL) {
+						if (strcmp(temp[1], "-c") != 0) {
+							insertSubstring(res, "-c 5 ", 6);
+						}
 					}
 				}
-			}
-			int x = atoi(res);
-			if (x != 0) {
-				if (findCommandByNum(commands, x) != NULL) {
-					printf("Executing Command %d\n", x);
-					res = findCommandByNum(commands, x);
+				int x = atoi(res);
+				if (x != 0) {
+					if (findCommandByNum(commands, x) != NULL) {
+						printf("Executing Command %d\n", x);
+						res = findCommandByNum(commands, x);
+						args = input(res);
+						execute(args);
+					}
+					else {
+						printf("Command not found\n");
+						printf("To Insert commands use 'insert'.\n");
+						printf("To look at all the commands use 'history brief' or 'history full'.\n");
+					}
+				}
+				else if (findCommand(commands, res) != NULL) {
+					printf("Executing.. %s\n", res);
+					res = findCommand(commands, res);
 					args = input(res);
 					execute(args);
-				}
-				else {
+				} else {
 					printf("Command not found\n");
 					printf("To Insert commands use 'insert'.\n");
 					printf("To look at all the commands use 'history brief' or 'history full'.\n");
 				}
 			}
-			else if (findCommand(commands, res) != NULL) {
-				printf("Executing.. %s\n", res);
-				res = findCommand(commands, res);
-				args = input(res);
-				execute(args);
-			} else {
+			else if (strcmp(line, "stop") == 0) {
+				printf("Exiting....\n");
+				return 0;
+			}
+			else {
 				printf("Command not found\n");
-				printf("To Insert commands use 'insert'.\n");
-				printf("To look at all the commands use 'history brief' or 'history full'.\n");
+				printf("Use 'exec' before commands to execute\n");
 			}
 		}
-		else if (strcmp(line, "stop") == 0) {
-			printf("Exiting....\n");
-			return;
-		}
-		else {
-			printf("Command not found\n");
-			printf("Use 'exec' before commands to execute\n");
-		}
 	}
-	return;
+	return 0;
 }
 
 char** input(char* line) {
